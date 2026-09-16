@@ -1,13 +1,44 @@
 {
   "accounts": [
     {
-      "account_id": "<AWS_ACCOUNT_ID>",
-      "account_name": "<ACCOUNT_NAME>",
-      "role_arn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<ROLE_NAME>",
-      "ipset_id": "<IP_SET_ID>",
-      "ipset_name": "<IP_SET_NAME>",
-      "region": "<AWS_REGION>"
+      "account_id": "<AWS_ACCOUNT_ID_1>",
+      "account_name": "<ACCOUNT_NAME_1>",
+      "role_arn": "arn:aws:iam::<AWS_ACCOUNT_ID_1>:role/<ROLE_NAME_1>",
+      "ipset_id": "<IP_SET_ID_1>",
+      "ipset_name": "<IP_SET_NAME_1>",
+      "region": "<AWS_REGION_1>"
+    },
+    {
+      "account_id": "<AWS_ACCOUNT_ID_2>",
+      "account_name": "<ACCOUNT_NAME_2>",
+      "role_arn": "arn:aws:iam::<AWS_ACCOUNT_ID_2>:role/<ROLE_NAME_2>",
+      "ipset_id": "<IP_SET_ID_2>",
+      "ipset_name": "<IP_SET_NAME_2>",
+      "region": "<AWS_REGION_2>"
+    },
+    {
+      "account_id": "<AWS_ACCOUNT_ID_3>",
+      "account_name": "<ACCOUNT_NAME_3>",
+      "role_arn": "arn:aws:iam::<AWS_ACCOUNT_ID_3>:role/<ROLE_NAME_3>",
+      "ipset_id": "<IP_SET_ID_3>",
+      "ipset_name": "<IP_SET_NAME_3>",
+      "region": "<AWS_REGION_3>"
+    },
+    {
+      "account_id": "<AWS_ACCOUNT_ID_4>",
+      "account_name": "<ACCOUNT_NAME_4>",
+      "role_arn": "arn:aws:iam::<AWS_ACCOUNT_ID_4>:role/<ROLE_NAME_4>",
+      "ipset_id": "<IP_SET_ID_4>",
+      "ipset_name": "<IP_SET_NAME_4>",
+      "region": "<AWS_REGION_4>"
+    },
+    {
+      "account_id": "<AWS_ACCOUNT_ID_5>",
+      "account_name": "<ACCOUNT_NAME_5>",
+      "role_arn": "arn:aws:iam::<AWS_ACCOUNT_ID_5>:role/<ROLE_NAME_5>",
+      "ipset_id": "<IP_SET_ID_5>",
+      "ipset_name": "<IP_SET_NAME_5>",
+      "region": "<AWS_REGION_5>"
     }
   ]
 }
-
