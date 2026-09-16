@@ -40,7 +40,6 @@ To simplify onboarding, a secure Python script utility was also developed that r
 
 ![WAF IP Synchronization Workflow](./images/IP%20Synchronization%20Workflow.png)
 
-*WAF IP Synchronization Workflow*
 
 ### Services Used
 
@@ -119,14 +118,13 @@ Use the following procedure to onboard — or offboard — an AWS account from t
 
 > **Note:** Selecting the `OFFBOARD` operation decommissions the cross-account IAM role, removes the `sts:AssumeRole` resource block from the Lambda execution role, and deletes the corresponding S3 target account metadata entry.
 
+--- 
+
 ### Onboarding Workflow Diagram
 
 ![AWS Account Onboarding Workflow — architecture](./images/Account%20Onboarding%20Workflow.png)
 
-*AWS Account Onboarding Workflow: role assumption and provisioning flow*
 
 ### Offboarding Workflow Diagram
 
 ![AWS Account Offboarding Workflow — architecture](./images/Account%20Offboarding%20Workflow.png)
-
-*AWS Account Offboarding Workflow: role decommissioning flow*
