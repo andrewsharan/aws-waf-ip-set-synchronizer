@@ -105,7 +105,7 @@ Use the following procedure to onboard — or offboard — an AWS account from t
    | Target Account Region | Region where WAF is deployed | Must match exactly |
    | Target WAF IP Set Name | Must match exactly |
 
-7. Once the password is validated, the existing IAM role which you are currently being assumed will assumes the **Operator** role, which in turn assumes the cross-account execution role to provision the IAM role. A cross-account IAM role is automatically created in the target account, with an inline policy that grants only the permissions required to retrieve and update the specified IP set.
+7. Once the password is validated, the existing IAM role that you are currently assuming assumes the **Operator** role, which in turn assumes the cross-account execution role to provision the IAM role. A cross-account IAM role is automatically created in the target account, with an inline policy that grants only the permissions required to retrieve and update the specified IP set.
 8. After the IAM role is provisioned, the process returns to the source account and updates the Lambda execution role policy so the Lambda function can assume the newly created role in the target account. The S3 config is also updated with the latest target account metadata.
 9. Execution logs are written to CloudWatch, and an email notification is sent to the users with one of the following statuses:
 
@@ -128,3 +128,10 @@ Use the following procedure to onboard — or offboard — an AWS account from t
 ### Offboarding Workflow Diagram
 
 ![AWS Account Offboarding Workflow — architecture](./images/Account%20Offboarding%20Workflow.png)
+
+
+## Outcome
+
+This solution significantly simplifies **multi-account AWS WAF blacklist rule management** by ensuring consistent blacklist enforcement across the organization. It eliminates manual synchronization efforts, reduces operational overhead, minimizes configuration drift, and improves overall reliability.
+
+By combining an **event-driven synchronization engine** with a fully **automated account onboarding workflow**, the team can now scale or detach WAF rule management across AWS accounts with a single command while maintaining strong governance and security controls.
