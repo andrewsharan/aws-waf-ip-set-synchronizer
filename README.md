@@ -12,6 +12,7 @@
 - [Onboarding / Offboarding an AWS Account](#onboarding--offboarding-an-aws-account)
   - [Onboarding Workflow Diagram](#onboarding-workflow-diagram)
   - [Offboarding Workflow Diagram](#offboarding-workflow-diagram)
+- [Outcome](#outcome)
 
 ---
 
@@ -128,6 +129,7 @@ Use the following procedure to onboard — or offboard — an AWS account from t
 ### Offboarding Workflow Diagram
 
 ![AWS Account Offboarding Workflow — architecture](./images/Account%20Offboarding%20Workflow.png)
+
 
 
 ## Outcome
