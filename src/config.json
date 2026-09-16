@@ -1,0 +1,13 @@
+{
+  "accounts": [
+    {
+      "account_id": "<AWS_ACCOUNT_ID>",
+      "account_name": "<ACCOUNT_NAME>",
+      "role_arn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<ROLE_NAME>",
+      "ipset_id": "<IP_SET_ID>",
+      "ipset_name": "<IP_SET_NAME>",
+      "region": "<AWS_REGION>"
+    }
+  ]
+}
+
