@@ -70,7 +70,7 @@ To simplify onboarding, a secure Python script utility was also developed that r
 - **Amazon CloudWatch Log Groups:** Configured in the **source** account to capture `Lambda execution logs` and `CloudShell onboarding/offboarding logs.`
 - **AWS CloudTrail:** Enabled in the **source** account to log management API calls (specifically capturing `UpdateIPSet` events).
 - **Amazon EventBridge Rule:** Configured in the **source** account to monitor CloudTrail API activity and trigger the central Lambda function.
-- **Cross-Account IAM Roles:** `Central Operator Role` provisioned in the **source** account and `Workload Execution Roles` deployed across all **target** accounts.
+- **Cross-Account IAM Roles:** `Central Operator Role` with minimal IAM, S3, SNS and CloudWatch permissions provisioned in the **source** account, along with `Workload Execution Roles` with minimal IAM and WAF permissions deployed across all **target** accounts.
 - **AWS CloudShell Environment:** Prepared in the **source** account to store and execute the onboarding automation script.
 
 --- 
