@@ -8,6 +8,7 @@
 - [Architecture](#architecture)
   - [Architecture Diagram](#architecture-diagram)
   - [Services Used](#services-used)
+- [Requirements](#requirements)
 - [WAF IP Set Synchronization Workflow](#waf-ip-set-synchronization-workflow)
 - [Onboarding / Offboarding an AWS Account](#onboarding--offboarding-an-aws-account)
   - [Onboarding Workflow Diagram](#onboarding-workflow-diagram)
@@ -58,6 +59,22 @@ To simplify onboarding, a secure Python script utility was also developed that r
 | **AWS CloudShell** | Stores and executes the account onboarding script. |
 
 ---
+
+## Requirements
+
+- **AWS WAFv2 IP Sets (IPv4):** Created in both the **source** and **target** AWS accounts.
+- **Amazon DynamoDB Table:** Provisioned in the **source** account for synchronization state tracking.
+- **Amazon S3 Bucket:** Created in the **source** account to store multi-account metadata configurations `(config.json)`.
+- **Amazon SNS Topic:** Configured in the **source** account to publish operational reports and alerts.
+- **AWS Lambda Function:** Deployed in the **source** account to execute differential state updates and cross-account synchronization.
+- **Lambda Execution IAM Role:** Provisioned in the **source** account with least-privilege permissions for `WAF, S3, DynamoDB, CloudWatch Logs, SNS, and STS (AssumeRole).`
+- **Amazon CloudWatch Log Groups:** Configured in the **source** account to capture `Lambda execution logs` and `CloudShell onboarding/offboarding logs.`
+- **AWS CloudTrail:** Enabled in the **source** account to log management API calls (specifically capturing `UpdateIPSet` events).
+- **Amazon EventBridge Rule:** Configured in the **source** account to monitor CloudTrail API activity and trigger the central Lambda function.
+- **Cross-Account IAM Roles:** `Central Operator Role` provisioned in the **source** account and `Workload Execution Roles` deployed across all **target** accounts.
+- **AWS CloudShell Environment:** Prepared in the **source** account to store and execute the onboarding automation script.
+
+--- 
 
 ## WAF IP Set Synchronization Workflow
 
