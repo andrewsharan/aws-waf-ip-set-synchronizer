@@ -1,10 +1,10 @@
 import json
-import boto3
-import time
 import os
-from datetime import datetime, timedelta
+import time
+from datetime import datetime, timedelta, timezone
+import boto3
 
-# Cache to avoid repeated S3 calls
+# Cache S3 config to avoid repeated API calls
 config_cache = None
 config_last_modified = None
 
@@ -12,106 +12,136 @@ config_last_modified = None
 s3 = boto3.client("s3")
 sts = boto3.client("sts")
 sns = boto3.client("sns")
+dynamodb = boto3.resource("dynamodb")
 
 # Load environment variables
-env = os.environ
-BUCKET_NAME = env["BUCKET_NAME"]
-CONFIG_KEY = env["CONFIG_KEY"]
-SNS_TOPIC_ARN = env["SNS_TOPIC_ARN"]
+BUCKET_NAME = os.environ["BUCKET_NAME"]
+CONFIG_KEY = os.environ["CONFIG_KEY"]
+DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
+SNS_TOPIC_ARN = os.environ["SNS_TOPIC_ARN"]
 
-
+# Load S3 config
 def load_config():
     global config_cache, config_last_modified
-
     try:
         response = s3.head_object(Bucket=BUCKET_NAME, Key=CONFIG_KEY)
         last_modified = response["LastModified"]
 
-        if config_cache is None:
+        if config_cache is None or last_modified != config_last_modified:
             print("Fetching config from S3...")
             obj = s3.get_object(Bucket=BUCKET_NAME, Key=CONFIG_KEY)
             config_cache = json.loads(obj["Body"].read())
             config_last_modified = last_modified
-
-        elif last_modified != config_last_modified:
-            print("Config updated, fetching latest config from S3...")
-            obj = s3.get_object(Bucket=BUCKET_NAME, Key=CONFIG_KEY)
-            config_cache = json.loads(obj["Body"].read())
-            config_last_modified = last_modified
-
-        else:
-            print("Using cached config to avoid repetitive S3 calls...")
-
         return config_cache
-
     except Exception as e:
-        print("Step 3 failed: Unable to load configuration from S3")
+        print("Unable to load config from S3")
         print(f"Reason: {str(e)}")
         raise
 
 
+# Load previous DB snapshot
+def get_previous_snapshot_from_db(ipset_id):
+    try:
+        table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+        response = table.get_item(Key={"ipset_id": ipset_id})
+
+        if "Item" in response:
+            return set(response["Item"].get("managed_ips", []))
+        return set()
+    except Exception as e:
+        print("DB read failed, defaulting to empty history")
+        print(f"Reason: {str(e)}")
+        return set()
+
+
+# Update new DB snapshot
+def update_db_snapshot(ipset_id, current_ips_list, username):
+    try:
+        table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+        ist_time = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S IST")
+
+        table.put_item(
+            Item={
+                "ipset_id": ipset_id,
+                "managed_ips": current_ips_list,
+                "last_updated_by": username,
+                "last_updated_time": ist_time,
+            }
+        )
+        print(f"DynamoDB record for {ipset_id} updated successfully")
+    except Exception as e:
+        print("Unable to update DynamoDB record")
+        print(f"Reason: {str(e)}")
+        raise
+
+
+# Lambda function handler
 def lambda_handler(event, context):
     try:
-        print("Step 1: Lambda execution started")
         print("Lambda execution started")
-
-        # Step 2: Event validation
-        print("Step 2: Validating incoming event")
 
         detail = event.get("detail")
         request_params = detail.get("requestParameters") if detail else None
 
         if not detail or not request_params or "addresses" not in request_params:
-            print("Invalid event structure, skipping execution")
-            print("Lambda execution stopped")
+            print("Invalid event detected, skipping execution")
             return
 
-        print("Event validated successfully")
+        current_ipset_id = request_params.get("id")
+        current_ipset_name = request_params.get("name", "Unknown-IPSet")
 
-        incoming_ips = request_params.get("addresses", [])
+        # DynamoDB partition key
+        ipset_id = f"{current_ipset_name}_{current_ipset_id}"
 
-        # NEW: IP presence check
-        print("Checking if IP(s) are present in the event")
+        # Raw list from event payload
+        source_ips_list = request_params.get("addresses", [])
 
-        if not incoming_ips:
-            print("No IP(s) found in event, skipping execution")
-            print("Lambda execution stopped")
-            return
+        # Tracking skipped IPs by identifying duplicate entries in payload
+        non_skipped_ips = set()
+        skipped_ips = set()
+        for ip in source_ips_list:
+            if ip in non_skipped_ips:
+                skipped_ips.add(ip)
+            else:
+                non_skipped_ips.add(ip)
 
-        print("IP(s) found in event, continuing execution")
+        # IP addresses de-duplication
+        source_ips_set = set(source_ips_list)
 
-        # Print event JSON AFTER validation
-        print(json.dumps(event))
-
-        # Remove duplicate IPs
-        incoming_ips = list(set(incoming_ips))
-        print(f"New IP(s) to be appended in the targets: {', '.join(incoming_ips)}")
-
-        # Step 3: Config load
-        print("Step 3: Loading configuration from S3")
+        # Initializing S3 config & Previous DB snapshot
         config = load_config()
-        print(f"Configuration loaded successfully for {len(config['accounts'])} account(s)")
+        previous_source_ips_set = get_previous_snapshot_from_db(ipset_id)
 
-        # Execution phase
-        print("Assuming roles and starting IP synchronization across target accounts")
+        # Track new IPs to append and explicitly deleted IPs from console
+        attempted_ips = source_ips_set - previous_source_ips_set
+        removed_ips = previous_source_ips_set - source_ips_set
 
-        synced_accounts = []
-        failed_accounts = []
-        skipped_accounts = []
+        # Active IPs targeted for sync evaluation
+        all_active_ips = attempted_ips.union(
+            source_ips_set.intersection(previous_source_ips_set)
+        )
+
+        print(f"Skipped IPs: {sorted(list(skipped_ips)) if skipped_ips else 'None'}")
+        print(f"New IPs: {sorted(list(attempted_ips)) if attempted_ips else 'None'}")
+        print(f"Removed IPs: {sorted(list(removed_ips)) if removed_ips else 'None'}")
+
+        # Cross account assumption
+        print("Assuming cross-account roles across target accounts for IP set synchronization...")
+        synced_accounts, skipped_accounts, failed_accounts = [], [], []
 
         for account in config["accounts"]:
             account_id = account["account_id"]
             account_name = account.get("account_name", "unknown")
             role_arn = account["role_arn"]
-            ipset_id = account["ipset_id"]
-            ipset_name = account["ipset_name"]
+            target_ipset_id = account["ipset_id"]
+            target_ipset_name = account["ipset_name"]
             region = account["region"]
 
             try:
                 assumed = sts.assume_role(
                     RoleArn=role_arn,
                     RoleSessionName="WAFSyncSession",
-                    DurationSeconds=900
+                    DurationSeconds=900,
                 )
                 creds = assumed["Credentials"]
 
@@ -120,130 +150,130 @@ def lambda_handler(event, context):
                     region_name=region,
                     aws_access_key_id=creds["AccessKeyId"],
                     aws_secret_access_key=creds["SecretAccessKey"],
-                    aws_session_token=creds["SessionToken"]
+                    aws_session_token=creds["SessionToken"],
                 )
 
+                # WAF Locktoken Retry logic
                 max_retries = 3
                 for attempt in range(1, max_retries + 1):
                     try:
                         ipset = waf.get_ip_set(
-                            Name=ipset_name,
-                            Scope="REGIONAL",
-                            Id=ipset_id
+                            Name=target_ipset_name, Scope="REGIONAL", Id=target_ipset_id
                         )
-                        current_ips = ipset["IPSet"]["Addresses"]
+                        target_ips_set = set(ipset["IPSet"]["Addresses"])
 
-                        new_ips = [ip for ip in incoming_ips if ip not in current_ips]
+                        # Desired target state calculation
+                        desired_target_set = target_ips_set.union(all_active_ips) - removed_ips
 
-                        if not new_ips:
-                            print(f"Account {account_name} ({account_id}): Skipped")
-                            print("Reason: IP(s) already exist in IP set")
+                        # Evaluate if target is already in sync
+                        if target_ips_set == desired_target_set:
+                            print(f"{account_name} ({account_id}): SKIPPED")
+                            print("Reason: IPs already exist in the target account")
                             skipped_accounts.append(f"{account_name} ({account_id})")
                             break
 
-                        updated_ips = current_ips + new_ips
-
+                        # Update target IP set to match perfectly with desired state
                         waf.update_ip_set(
-                            Name=ipset_name,
+                            Name=target_ipset_name,
                             Scope="REGIONAL",
-                            Id=ipset_id,
-                            Addresses=updated_ips,
-                            LockToken=ipset["LockToken"]
+                            Id=target_ipset_id,
+                            Addresses=list(desired_target_set),
+                            LockToken=ipset["LockToken"],
                         )
-
-                        print(f"Account {account_name} ({account_id}): Synced successfully")
+                        print(f"{account_name} ({account_id}): SYNCED")
                         synced_accounts.append(f"{account_name} ({account_id})")
                         break
 
                     except waf.exceptions.WAFOptimisticLockException:
-                        print(f"Lock conflict detected, retrying (attempt {attempt})")
                         if attempt < max_retries:
                             time.sleep(1)
                         else:
-                            raise RuntimeError("IP synchronization failed due to repeated WAF lock conflicts despite retry attempts")
+                            raise RuntimeError(
+                                "IP set update failed due to repeated WAF locktoken conflicts after multiple retries"
+                            )
 
             except Exception as e:
-                print(f"Account {account_name} ({account_id}): Failed")
+                print(f"{account_name} ({account_id}): FAILED")
                 print(f"Reason: {str(e)}")
-                failed_accounts.append({
-                    "name": account_name,
-                    "account": f"{account_name} ({account_id})"
-                })
+                failed_accounts.append(f"{account_name} ({account_id})")
 
             time.sleep(0.2)
 
-        # Step 5: Summary
-        print("Step 5: Aggregating final synchronization results")
-
-        total_accounts = len(config['accounts'])
-        num_failed = len(failed_accounts)
-        num_synced = len(synced_accounts)
-        num_skipped = len(skipped_accounts)
-
-        if num_failed > 0:
-            final_status_message = f"IP Synchronization failed for {num_failed} account(s)"
-        elif num_skipped > 0 and num_synced == 0:
-            final_status_message = f"IP Synchronization skipped for {num_skipped} account(s)"
-        else:
-            final_status_message = "IP Synchronization completed successfully across all accounts"
-
-        print(final_status_message)
-
-        summary_dict = {
-            "total_accounts": total_accounts,
-            "synced_accounts": {
-                "count": num_synced,
-                "name": synced_accounts if synced_accounts else []
-            },
-            "failed_accounts": {
-                "count": num_failed,
-                "name": [acc['account'] for acc in failed_accounts] if failed_accounts else []
-            },
-            "skipped_accounts": {
-                "count": num_skipped,
-                "name": skipped_accounts if skipped_accounts else []
-            }
-        }
-
-        print(json.dumps(summary_dict))
-
+        # Extracted user identity metadata cleanly before DB updates
         user_identity = event.get("detail", {}).get("userIdentity", {})
-        arn = user_identity.get("arn", "")
-        username = arn.split("/")[-1] if arn and "/" in arn else "Unknown"
+        username = (
+            user_identity.get("arn", "").split("/")[-1]
+            if "/" in user_identity.get("arn", "")
+            else "Unknown"
+        )
 
-        ist_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
-        execution_time = ist_time.strftime("%Y-%m-%d %H:%M:%S IST")
+        if source_ips_set != previous_source_ips_set:
+            update_db_snapshot(ipset_id, sorted(list(source_ips_set)), username)
+        else:
+            print("Skipping DB update as DynamoDB record is perfectly in sync")
 
-        if failed_accounts:
-            message = f"""
-The WAF IP Synchronization Lambda function was executed by {username} at {execution_time}.
+        # SNS Mail notification
+        ist_time = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d %H:%M:%S IST")
 
-Execution Status: 🚨 FAILED
+        num_failed, num_synced, num_skipped = (
+            len(failed_accounts),
+            len(synced_accounts),
+            len(skipped_accounts),
+        )
 
-Total accounts processed: {total_accounts}
+        # Update global report execution status
+        if num_failed > 0:
+            status = "🚨 FAILED"
+        elif num_skipped > 0 and num_synced == 0:
+            status = "⚠️ SKIPPED"
+        else:
+            status = "✅ SYNCED"
 
-Synced account(s): {num_synced}
+        # Format layout tracking details dynamically into stacked blocks for clean emails
+        ips_reporting_blocks = []
+        if attempted_ips:
+            ips_reporting_blocks.append("New IPs:\n" + "\n".join(sorted(list(attempted_ips))))
+        if removed_ips:
+            ips_reporting_blocks.append("Removed IPs:\n" + "\n".join(sorted(list(removed_ips))))
+        if skipped_ips:
+            ips_reporting_blocks.append("Existing IPs:\n" + "\n".join(sorted(list(skipped_ips))))
 
-Skipped account(s): {num_skipped}
-Account name(s): {', '.join(skipped_accounts) if skipped_accounts else 'None'}
-    
-Failed account(s): {num_failed}
-Account name(s): {', '.join([acc['account'] for acc in failed_accounts])}
+        if ips_reporting_blocks:
+            ips_to_show = "\n\n".join(ips_reporting_blocks)
+        else:
+            ips_to_show = "No IPs are found in this execution"
+
+        message = f"""
+The WAF IP Set Synchronizer Lambda function was executed by {username} at {ist_time} from the source account.
+
+Updated IP set: {ipset_id}
+
+IPs attempted in this execution:
+
+{ips_to_show}
+
+Execution Summary:
+Total accounts processed: {len(config['accounts'])}
+
+Number of synced accounts: {num_synced}
+{chr(10).join(synced_accounts) if synced_accounts else 'None'}
+
+Number of skipped accounts: {num_skipped}
+{chr(10).join(skipped_accounts) if skipped_accounts else 'None'}
+
+Number of failed accounts: {num_failed}
+{chr(10).join(failed_accounts) if failed_accounts else 'None'}
 """
-            try:
-                sns.publish(
-                    TopicArn=SNS_TOPIC_ARN,
-                    Subject="🚨 Action Required: WAF IP Synchronization Failed for Target Account(s)",
-                    Message=message
-                )
-                print("Failure notification sent successfully")
-            except Exception as e:
-                print("Failed to send notification via SNS")
-                print(f"Reason: {str(e)}")
 
+        # Publish message to SNS topic
+        sns.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=f"{status} - WAF IP Set Synchronization Report",
+            Message=message,
+        )
         print("Lambda execution stopped")
 
     except Exception as e:
-        print("Lambda execution failed before completion")
+        print("Lambda execution failed")
         print(f"Reason: {str(e)}")
         raise
