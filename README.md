@@ -8,7 +8,7 @@
 - [Architecture](#architecture)
   - [Architecture Diagram](#architecture-diagram)
   - [Services Used](#services-used)
-- [Requirements](#requirements)
+  - [Requirements](#requirements)
 - [WAF IP Set Synchronization Workflow](#waf-ip-set-synchronization-workflow)
 - [Onboarding / Offboarding an AWS Account](#onboarding--offboarding-an-aws-account)
   - [Onboarding Workflow Diagram](#onboarding-workflow-diagram)
@@ -58,9 +58,8 @@ To simplify onboarding, a secure Python script utility was also developed that r
 | **Amazon S3** | Stores target account metadata for cross-account automation. |
 | **AWS CloudShell** | Stores and executes the account onboarding script. |
 
----
 
-## Requirements
+### Requirements
 
 - **AWS WAFv2 IP Sets (IPv4):** Created in both the **source** and **target** AWS accounts.
 - **Amazon DynamoDB Table:** Provisioned in the **source** account for synchronization state tracking.
